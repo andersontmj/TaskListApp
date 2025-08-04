@@ -20,6 +20,7 @@ class TaskListViewController: UIViewController, UITableViewDelegate, UITableView
         button.layer.shadowRadius = 4
         button.layer.shadowOffset = CGSize(width: 0, height: 2)
         button.setImage(UIImage(systemName: "plus"), for: .normal)
+        button.accessibilityLabel = "Adicionar nova tarefa"
         return button
     }()
     
@@ -74,11 +75,32 @@ class TaskListViewController: UIViewController, UITableViewDelegate, UITableView
     }
     
     private func bindViewModel() {
-        viewModel.onTasksUpdated = { [weak self] tasks in
-           guard let self = self else { return }
-           let indexPath = IndexPath(row: tasks.count - 1, section: 0)
-           self.tableView.insertRows(at: [indexPath], with: .fade)
-       }
+        viewModel.onTasksUpdated = { [weak self] tasks, update in
+            guard let self = self else { return }
+            switch update {
+            case .added(let indexPath):
+                self.tableView.insertRows(at: [indexPath], with: .fade)
+            case .deleted(let indexPath):
+                self.tableView.deleteRows(at: [indexPath], with: .fade)
+            case .updated(let indexPath):
+                self.tableView.reloadRows(at: [indexPath], with: .fade)
+            case .deletedMultiple(let indexPaths):
+                   self.tableView.deleteRows(at: indexPaths, with: .fade)
+            case .reloaded:
+                self.tableView.reloadData()
+            }
+            
+            if let headerView = self.tableView.tableHeaderView,
+                   let clearButton = headerView.subviews.first(where: { $0 is UIButton }) as? UIButton {
+                   
+                UIView.animate(withDuration: 0.5,
+                               delay: 0.05 , options: .curveEaseInOut) {
+                        clearButton.isEnabled = tasks.count > 0
+                        clearButton.backgroundColor = tasks.count > 0 ? .white : .systemGray
+                }
+       
+                }
+        }
     }
     
     private func createHeaderView() -> UIView {
@@ -94,10 +116,29 @@ class TaskListViewController: UIViewController, UITableViewDelegate, UITableView
         headerLabel.translatesAutoresizingMaskIntoConstraints = false
         headerView.addSubview(headerLabel)
         
+        let clearButton = UIButton()
+        clearButton.backgroundColor = viewModel.numberOfTasks() > 0 ? .white : .systemGray
+        clearButton.setTitle("Limpar", for: .normal)
+        clearButton.setTitleColor(.systemBlue, for: .normal)
+        clearButton.setTitleColor(.white, for: .disabled)
+        clearButton.layer.cornerRadius = 12
+        clearButton.translatesAutoresizingMaskIntoConstraints = false
+        clearButton.accessibilityLabel = "Limpar todas as tarefas"
+        clearButton.accessibilityHint = "Toque para remover todas as tarefas da lista"
+        clearButton.isEnabled = viewModel.numberOfTasks() > 0
+        clearButton.addTarget(self, action: #selector(clearAllTasks), for: .touchUpInside)
+        headerView.addSubview(clearButton)
+        
         NSLayoutConstraint.activate([
             headerLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: UIConstants.margin),
-            headerLabel.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -UIConstants.margin),
-            headerLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor)
+            headerLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            headerLabel.trailingAnchor.constraint(equalTo: clearButton.leadingAnchor, constant: -UIConstants.margin),
+            
+            
+            clearButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -UIConstants.margin),
+            clearButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            clearButton.heightAnchor.constraint(equalToConstant: 36),
+            clearButton.widthAnchor.constraint(equalToConstant: 72),
         ])
         
         return headerView
@@ -117,6 +158,10 @@ class TaskListViewController: UIViewController, UITableViewDelegate, UITableView
         })
         
         present(alert, animated: true)
+    }
+    
+    @objc func clearAllTasks() {
+        viewModel.clearAllTasks()
     }
     
     // MARK: - UITableViewDelegate
@@ -144,4 +189,41 @@ class TaskListViewController: UIViewController, UITableViewDelegate, UITableView
             cell.transform = .identity
         }
     }
+    
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        viewModel.toggleTaskCompletion(at: indexPath.row)
+    }
+    
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        let editAction = UIContextualAction(style: .normal, title: "Editar") { [weak self] _, _, completion in
+                guard let self = self else { return }
+                let task = self.viewModel.task(at: indexPath.row)
+                let alert = UIAlertController(title: "Editar tarefa", message: nil, preferredStyle: .alert)
+                alert.addTextField { textField in
+                    textField.text = task.title
+                }
+                alert.addAction(UIAlertAction(title: "Cancelar", style: .cancel))
+                alert.addAction(UIAlertAction(title: "Salvar", style: .default) { _ in
+                    if let newTitle = alert.textFields?.first?.text, !newTitle.isEmpty {
+                        self.viewModel.updateTask(at: indexPath.row, withTitle: newTitle)
+                    }
+                })
+                self.present(alert, animated: true)
+                completion(true)
+            }
+            editAction.backgroundColor = .systemBlue
+        
+        let deleteAction = UIContextualAction(style: .destructive, title: "Excluir") { [weak self] _, _, completion in
+                guard let self = self else { return }
+                self.viewModel.deleteTask(at: indexPath.row)
+                completion(true)
+            }
+        
+        let configuration = UISwipeActionsConfiguration(actions: [deleteAction, editAction])
+        configuration.performsFirstActionWithFullSwipe = false
+            
+        return configuration
+    }
+    
 }

@@ -33,7 +33,7 @@ class TaskTableViewCell: UITableViewCell {
         contentView.addSubview(checkMarkImageView)
         
         isAccessibilityElement = true
-        accessibilityTraits = .staticText
+        accessibilityTraits = .button
     }
     
     private func setupConstraints() {
@@ -50,7 +50,6 @@ class TaskTableViewCell: UITableViewCell {
     }
     
     func configure(with task: Task) {
-        titleLabel.text = task.title
         titleLabel.attributedText = task.isCompleted ? NSAttributedString(string: task.title, attributes: [.strikethroughStyle: NSUnderlineStyle.single.rawValue]
         ) : NSAttributedString(string: task.title)
         accessibilityLabel = "\(task.title), \(task.isCompleted ? "concluída" : "não concluída")"
